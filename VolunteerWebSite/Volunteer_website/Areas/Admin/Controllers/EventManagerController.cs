@@ -1,25 +1,21 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Volunteer_website.Areas.Admin.Data;
+using Volunteer_website.Areas.Admins.Data;
 using Volunteer_website.Models;
 using X.PagedList.Extensions;
 
-namespace Volunteer_website.Areas.Admin.Controllers
+namespace Volunteer_website.Areas.Admins.Controllers
 {
     [Area("Admin")]
     [Authorize("Admin")]
+    [Route("Admin/EventManager")] 
     public class EventManagerController : Controller
     {
         private readonly VolunteerManagementContext _db;
         public EventManagerController(VolunteerManagementContext context) 
         {
             _db = context;
-        }
-
-        public IActionResult Index()
-        {
-            return View();
         }
 
         #region Hiển thị sự kiện
@@ -45,22 +41,25 @@ namespace Volunteer_website.Areas.Admin.Controllers
         {
             try
             {
-                //var firstEvent = await _db.Events.FirstOrDefaultAsync(); ;
-                //Console.WriteLine(firstEvent.EventId);
                 var EventId = request.EventId;
                 var existingEvent = _db.Events.FirstOrDefault(ev => ev.EventId == EventId);
                 if (existingEvent == null)
                 {
-                    return Json(new { success = false, message = "Event not found" });
+                    return Json(new { success = false, message = "Không tìm thấy sự kiện!" });
+                }
+                
+                if (existingEvent.DayBegin <= DateOnly.FromDateTime(DateTime.Now))
+                {
+                    return Json(new { success = false, message = "Sự kiện đã qua thời gian bắt đầu ,không thể chấp nhận!" });
                 }
 
                 // chuyển trạng thái status
-                existingEvent.Status = "ACCEPT";
+                existingEvent.Status = "ACCEPTED";
 
                 _db.Update(existingEvent);
                 await _db.SaveChangesAsync();
 
-                return Json(new { success = true, message = "Event accepted successfully" });
+                return Json(new { success = true, message = "Sự kiện đã được chấp nhận!" });
             }
             catch (Exception ex)
             {
@@ -78,16 +77,28 @@ namespace Volunteer_website.Areas.Admin.Controllers
                 var existingEvent = _db.Events.FirstOrDefault(ev => ev.EventId == request.EventId);
                 if (existingEvent == null)
                 {
-                    return Json(new { success = false, message = "Event not found" });
+                    return Json(new { success = false, message = "Không tìm thấy sự kiện!" });
+                }
+
+                var registrated = _db.Registrations.Where(e=>e.EventId == request.EventId)
+                    .FirstOrDefault();
+                if (registrated != null) 
+                {
+                    return Json(new { success = false, message = "Đã có tình nguyện viên đăng ký không thể từ chối!" });
+                }
+
+                if(existingEvent.DayBegin <= DateOnly.FromDateTime(DateTime.Now))
+                {
+                    return Json(new { success = false, message = "Sự kiện đã bắt đầu không thể từ chối!" });
                 }
 
                 // chuyển trạng thái status
-                existingEvent.Status = "REJECT";
+                existingEvent.Status = "REJECTED";
 
                 _db.Update(existingEvent);
                 await _db.SaveChangesAsync();
 
-                return Json(new { success = true, message = "Event rejected successfully" });
+                return Json(new { success = true, message = "Từ chối thành công" });
             }
             catch (Exception ex)
             {
@@ -96,48 +107,86 @@ namespace Volunteer_website.Areas.Admin.Controllers
         }
         #endregion
 
-        #region lấy dữ liệu event
-        public async Task<IActionResult> GetEventDetails(string id)
+        #region Xem chi tiet su kien
+        [HttpGet]
+        public async Task<IActionResult> EventDetails(string id)
         {
-            var eventObj = await _db.Events
-                .Include(e => e.Org)  // Include related organization
-                .FirstOrDefaultAsync(ev => ev.EventId == id);
-
-            if (eventObj == null)
-                return Json(new { success = false, message = "Event not found" });
-
-            // Count registrations
-            var registrationCount = await _db.Registrations.CountAsync(r => r.EventId == id);
-
-            // Get donations information
-            var donations = await _db.Donations
-                .Where(d => d.EventId == id)
-                .ToListAsync();
-
-            return Json(new
+            if (string.IsNullOrEmpty(id))
             {
-                success = true,
-                data = new
+                return NotFound("Mã sự kiện đã được sử dụng");
+            }
+
+            try
+            {
+                var eventDetail = await _db.Events
+                    .Where(x => x.EventId == id)
+                    .FirstOrDefaultAsync();
+
+                if (eventDetail == null)
                 {
-                    eventId = eventObj.EventId,
-                    name = eventObj.Name,
-                    description = eventObj.Description,
-                    location = eventObj.Location,
-                    dayBegin = eventObj.DayBegin,
-                    dayEnd = eventObj.DayEnd,
-                    targetMember = eventObj.TargetMember,
-                    targetFunds = eventObj.TargetFunds,
-                    type_event_name = eventObj.TypeEventName,
-                    organizationName = eventObj.Org?.Name,
-                    status = eventObj.Status,
-                    imagePath = eventObj.ImagePath,
-                    listImg = eventObj.ListImg,
-                    registrationCount = registrationCount,
-                    donationCount = donations.Count,
-                    totalAmount = donations.Sum(d => d.Amount ?? 0)
+                    return NotFound("Không tìm thấy sự kiện!");
                 }
-            });
+
+
+                var orgName = await _db.Organizations
+                    .Where(o => o.OrgId == eventDetail.OrgId)
+                    .Select(o => o.Name)
+                    .FirstOrDefaultAsync() ?? "Tổ chức không xác định!";
+                var org = await _db.Organizations
+                    .Where(o => o.OrgId == eventDetail.OrgId)
+                    .FirstOrDefaultAsync();
+
+                var imgPath = "images/default.jpg";
+                if(org!.ImagePath != null) imgPath = org.ImagePath;
+
+                var registrations = await _db.Registrations
+                    .Where(r => r.EventId == id)
+                    .OrderByDescending(r => r.RegisterAt)
+                    .Take(10)
+                    .Join(
+                        _db.Volunteers,
+                        r => r.VolunteerId,
+                        v => v.VolunteerId,
+                        (r, v) => new
+                        {
+                            Name = v.Name ?? "N/A",
+                            Time = r.RegisterAt.HasValue ? r.RegisterAt.Value.ToString("dd/MM/yyyy") : "N/A"
+                        })
+                    .ToListAsync();
+
+
+                var donations = await _db.Donations
+                    .Where(d => d.EventId == id)
+                    .OrderByDescending(d => d.DonationDate)
+                    .Take(10)
+                    .Join(
+                        _db.Volunteers,
+                        d => d.VolunteerId,
+                        v => v.VolunteerId,
+                        (d, v) => new
+                        {
+                            Name = v.Name ?? "N/A",
+                            Amount = d.Amount,
+                            Time = d.DonationDate.HasValue ? d.DonationDate.Value.ToString("dd/MM/yyyy") : "N/A"
+                        })
+                    .ToListAsync();
+
+
+                ViewBag.OrgName = orgName;
+                ViewBag.Participants = registrations;
+                ViewBag.ImgPath = imgPath;
+                ViewBag.Donations = donations;
+                ViewBag.RegisteredCount = await _db.Registrations.CountAsync(r => r.EventId == id);
+
+                return View(eventDetail);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Lỗi: " + ex);
+                return StatusCode(500, "Đã có lỗi");
+            }
         }
         #endregion
+
     }
 }

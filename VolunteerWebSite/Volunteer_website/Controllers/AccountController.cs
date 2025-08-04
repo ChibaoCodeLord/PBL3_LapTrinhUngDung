@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Volunteer_website.ViewModel;
+using Microsoft.AspNetCore.Mvc;
 using Volunteer_website.Models;
 using AutoMapper;
 using Volunteer_website.Helpers;
@@ -9,9 +8,8 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
-using System.Text.RegularExpressions;
-using Microsoft.AspNet.Identity;
-using System.Data.Entity;
+using Volunteer_website.ViewModels;
+using AspNetCoreGeneratedDocument;
 
 namespace Volunteer_website.Controllers
 {
@@ -37,54 +35,93 @@ namespace Volunteer_website.Controllers
         [HttpPost]
         public async Task<IActionResult> Register(RegisterVM model)
         {
-            if (ModelState.IsValid)
+            if (!ModelState.IsValid)
             {
-                // Kiểm tra username đã tồn tại hay chưa
-                if (_db.Users.Any(u => u.UserName == model.UserName))
+                TempData["ErrorMessage"] = "Invalid data! Please check the form and try again.";
+                foreach (var error in ModelState.Values.SelectMany(v => v.Errors))
                 {
-                    ModelState.AddModelError("UserName", "Tên đăng nhập đã tồn tại. Vui lòng chọn tên khác!");
-                    return View(model);
+                    Console.WriteLine($"Validation Error: {error.ErrorMessage}");
                 }
+                return View(model);
+            }
 
-                if (!Util.IsValidPhoneNumber(model.PhoneNumber!))
-                {
-                    ModelState.AddModelError("PhoneNumber", "Số điện thoại không phù hợp. Vui lòng nhập số điện thoại khác!");
-                    return View(model);
-                }
+            // Kiểm tra username đã tồn tại
+            if (_db.Users.Any(u => u.UserName == model.UserName))
+            {
+                ModelState.AddModelError("UserName", "Tên đăng nhập đã tồn tại. Vui lòng chọn tên khác!");
+                return View(model);
+            }
 
-                if (await _db.Volunteers.AnyAsync(v => v.PhoneNumber == model.PhoneNumber)
-                    || await _db.Organizations.AnyAsync(v => v.PhoneNumber == model.PhoneNumber))
-                {
-                    ModelState.AddModelError("PhoneNumber", "Số điện thoại này đã tồn tại. Vui lòng nhập số điện thoại khác!");
-                    return View(model);
-                }
+            // Kiểm tra định dạng và trùng lặp PhoneNumber
+            if (!InputValidator.IsValidPhoneNumber(model.PhoneNumber!))
+            {
+                ModelState.AddModelError("PhoneNumber", "Số điện thoại không phù hợp. Vui lòng nhập số điện thoại khác!");
+                return View(model);
+            }
 
-                if (await _db.Volunteers.AnyAsync(v => v.Email == model.Email) 
-                    || await _db.Organizations.AnyAsync(v => v.Email == model.Email)
-                    || await _db.Admins.AnyAsync(v => v.Email == model.Email))
-                {
-                    ModelState.AddModelError("Email", "Email đã tồn tại. Vui lòng nhập Email khác!");
-                    return View(model);
-                }
+            if (await _db.Volunteers.AnyAsync(v => v.PhoneNumber == model.PhoneNumber) ||
+                await _db.Organizations.AnyAsync(v => v.PhoneNumber == model.PhoneNumber))
+            {
+                ModelState.AddModelError("PhoneNumber", "Số điện thoại này đã tồn tại. Vui lòng nhập số điện thoại khác!");
+                return View(model);
+            }
 
+            // Kiểm tra định dạng và trùng lặp Email
+            if (!InputValidator.IsValidEmail(model.Email!))
+            {
+                ModelState.AddModelError("Email", "Định dạng Email không hợp lệ. Vui lòng nhập lại!");
+                return View(model);
+            }
+
+            if (await _db.Volunteers.AnyAsync(v => v.Email == model.Email) ||
+                await _db.Organizations.AnyAsync(v => v.Email == model.Email) ||
+                await _db.Admins.AnyAsync(v => v.Email == model.Email))
+            {
+                ModelState.AddModelError("Email", "Email đã tồn tại. Vui lòng nhập Email khác!");
+                return View(model);
+            }
+
+            // Kiểm tra DateOfBirth
+            if (model.DateOfBirth == null)
+            {
+                ModelState.AddModelError("DateOfBirth", "Ngày sinh không được để trống!");
+                return View(model);
+            }
+            if (DateOnly.FromDateTime((DateTime)model.DateOfBirth) > DateOnly.FromDateTime(DateTime.Now))
+            {
+                ModelState.AddModelError("DateOfBirth", "Ngày sinh không được trong tương lai!");
+                return View(model);
+            }
+
+            using (var transaction = await _db.Database.BeginTransactionAsync())
+            {
                 try
                 {
                     var user = new User();
 
-                    var lastUser = await _db.Users
-                        .Where(user => user.UserId.StartsWith("U"))
-                        .OrderByDescending(user => user.UserId)
+                    // Tạo UserId với tiền tố "VOL"
+                    var lastUser = await _db.Volunteers
+                        .OrderByDescending(u => u.VolunteerId)
                         .FirstOrDefaultAsync();
                     if (lastUser == null)
                     {
-                        user.UserId = "U0001";
+                        user.UserId = "VOL0001";
                     }
                     else
                     {
-                        int temp = int.Parse(lastUser.UserId.Substring(1));
-                        temp++;
-                        user.UserId = "U" + temp.ToString("D4");
+                        // Trích xuất phần số từ "VOLXXXX" (ví dụ: "VOL0007" -> "0007")
+                        string numericPart = lastUser.VolunteerId.Substring(3); // Lấy "0007"
+                        if (int.TryParse(numericPart, out int temp))
+                        {
+                            temp++;
+                            user.UserId = $"VOL{temp:D4}";
+                        }
+                        else
+                        {
+                            throw new FormatException($"Invalid numeric part in UserId: {lastUser.VolunteerId}");
+                        }
                     }
+
                     user.RandomKey = Util.GenerateRandomkey();
                     user.UserName = model.UserName;
                     user.Password = model.Password.ToMd5Hash(user.RandomKey);
@@ -92,33 +129,48 @@ namespace Volunteer_website.Controllers
                     user.IsActive = true;
                     user.CreateAt = DateOnly.FromDateTime(DateTime.Now);
 
-                    var volunteer = new Volunteer();
-                    volunteer.VolunteerId = user.UserId;
-                    volunteer.PhoneNumber = model.PhoneNumber;
-                    volunteer.Email = model.Email;
-                    volunteer.Name = model.Name;
-                    volunteer.DateOfBirth = DateOnly.FromDateTime((DateTime)model.DateOfBirth!);
-                    volunteer.Gender = model.Gender;
-                    volunteer.ImagePath = model.ImagePath;
-                    volunteer.Address = model.Address;
+                    var volunteer = new Volunteer
+                    {
+                        VolunteerId = user.UserId,
+                        PhoneNumber = model.PhoneNumber,
+                        Email = model.Email,
+                        Name = model.Name,
+                        DateOfBirth = DateOnly.FromDateTime((DateTime)model.DateOfBirth!),
+                        Gender = model.Gender,
+                        ImagePath = model.ImagePath,
+                        Address = model.Address
+                    };
 
                     _db.Users.Add(user);
                     _db.Volunteers.Add(volunteer);
-                    _db.SaveChanges();
+                    await _db.SaveChangesAsync();
 
-                    TempData["SuccessMessage"] = "Your registration was successful!";
+                    await transaction.CommitAsync();
+
+                    TempData["SuccessMessage"] = "Đăng ký thành công";
                     return RedirectToAction("Index", "Home");
+                }
+                catch (FormatException ex)
+                {
+                    await transaction.RollbackAsync();
+                    TempData["ErrorMessage"] = $"Lỗi: {ex.Message}.";
+                    return View(model);
+                }
+                catch (DbUpdateException ex)
+                {
+                    await transaction.RollbackAsync();
+                    TempData["ErrorMessage"] = "Database error occurred during registration. Please try again later.";
+                    Console.WriteLine($"DbUpdateException: {ex.InnerException?.Message ?? ex.Message}");
+                    return View(model);
                 }
                 catch (Exception ex)
                 {
-                    TempData["ErrorMessage"] = "Registration Error: " + ex.Message;
+                    await transaction.RollbackAsync();
+                    TempData["ErrorMessage"] = "An unexpected error occurred during registration. Please try again.";
+                    Console.WriteLine($"Exception: {ex.Message}");
+                    return View(model);
                 }
             }
-            else
-            {
-                TempData["ErrorMessage"] = "Invalid data! Please check and try again.";
-            }
-            return View(model);
         }
         #endregion
 
@@ -171,14 +223,20 @@ namespace Volunteer_website.Controllers
 
                 var claims = new List<Claim>
                 {
+                    new Claim(ClaimTypes.NameIdentifier, volunteer.VolunteerId),
                     new Claim(ClaimTypes.Name, volunteer.Name ?? ""),
                     new Claim(ClaimTypes.Email, volunteer.Email ?? ""),
                     new Claim(ClaimTypes.MobilePhone, volunteer.PhoneNumber ?? ""),
                     new Claim(ClaimTypes.StreetAddress, volunteer.Address ?? ""),
                     new Claim(ClaimTypes.Gender, volunteer.Gender == true? "Male" : "Female"),
-                    new Claim(ClaimTypes.Role, user.Role.ToString()!)
-                };
+                    new Claim(ClaimTypes.Role, user.Role.ToString()!),
+                     new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
 
+             
+                    new Claim("ImagePath", volunteer.ImagePath ?? "default.jpg")
+                    
+                };
+                
                 var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
                 var claimsPrincipal = new ClaimsPrincipal(claimsIdentity);
 
@@ -234,7 +292,7 @@ namespace Volunteer_website.Controllers
 
                 return (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                     ? Redirect(returnUrl)
-                    : Redirect(Url.Action("Index", "Statistics", new { area = "Organization" }));
+                    : Redirect(Url.Action("Index", "Statistics", new { area = "Organization" })!);
             }
             else if (user.Role == 2)
             {
@@ -244,12 +302,14 @@ namespace Volunteer_website.Controllers
                     ModelState.AddModelError("loi", "Thông tin Admin không tồn tại.");
                     return View(model);
                 }
-
+                var ImgPath = Admin.ImgPath;
+                if (ImgPath == null) ImgPath = "/images/default.jpg";
                 var claims = new List<Claim>
                 {
                     new Claim(ClaimTypes.Name, Admin.Name ?? ""),
                     new Claim(ClaimTypes.Email, Admin.Email ?? ""),
-                    new Claim(ClaimTypes.Role, user.Role.ToString()),
+                    new Claim(ClaimTypes.Role, user.Role.ToString()!),
+                    new Claim("AvatarUrl", ImgPath),
                     new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString())
                 };
 
@@ -269,7 +329,7 @@ namespace Volunteer_website.Controllers
 
                 return (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                     ? Redirect(returnUrl)
-                    : Redirect(Url.Action("Index", "HomeAdmin", new { area = "Admin" }));
+                    : Redirect(Url.Action("Index", "HomeAdmin", new { area = "Admin" })!);
             }
 
 

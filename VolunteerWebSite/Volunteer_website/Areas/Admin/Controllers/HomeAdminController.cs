@@ -1,13 +1,17 @@
+
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Volunteer_website.Models;
+using Volunteer_website.Areas.Admins.Data;
 using X.PagedList.Extensions;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authorization;
-namespace Volunteer_website.Areas.Admin.Controllers
+using System.Buffers;
+using Volunteer_website.Helpers;
+using Volunteer_website.ViewModels;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
+namespace Volunteer_website.Areas.Admins.Controllers
 {
     [Area("Admin")]
     [Route("Admin/HomeAdmin")]
@@ -23,8 +27,18 @@ namespace Volunteer_website.Areas.Admin.Controllers
         #region Trang chủ
         [Route("")]
         [Route("Index")]
-        public IActionResult Index()
+        public IActionResult Index(string? startDate = null, string? endDate = null)
         {
+            var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(adminId))
+            {
+                return RedirectToAction("Login", "Account");
+            }
+            var currentAdmin = _db.Admins.FirstOrDefault(a => a.AdminId == adminId);
+            if (currentAdmin == null)
+                return NotFound();
+            ViewBag.ImgPath = currentAdmin.ImgPath;
+
             var events = _db.Events.Count();
             var totalAmount = _db.Donations.AsNoTracking()
                                    .Sum(d => d.Amount);
@@ -32,480 +46,352 @@ namespace Volunteer_website.Areas.Admin.Controllers
 
             var currentYear = DateTime.Now.Year;
             var startYear = currentYear - 5;
-            var eventCountsByYear = _db.Events.Where(e => e.DayBegin.HasValue && e.DayBegin.Value.Year >= startYear)
-                                            .GroupBy(e => e.DayBegin.Value.Year)
-                                            .Select(g => new { Year = g.Key, Count = g.Count() })
-                                            .OrderBy(e => e.Year)
-                                            .ToList();
+            int[] eventsByYear = new int[6];
+
+            for (int i = 0; i < 6; i++)
+            {
+                var year = startYear + i;
+                eventsByYear[i] = _db.Events.Count(e => e.DayBegin.HasValue && e.DayBegin.Value.Year == year);
+            }
 
             ViewBag.Events = events;
             ViewBag.Donations = totalAmount;
             ViewBag.Volunteers = volunteers;
-            ViewBag.eventCountsByYear = eventCountsByYear;
+
+            // Xử lý ngày mặc định nếu startDate hoặc endDate là null
+            DateOnly startDateOnly, endDateOnly;
+            if (!string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate))
+            {
+                startDateOnly = DateOnly.Parse(startDate);
+                endDateOnly = DateOnly.Parse(endDate);
+            }
+            else
+            {
+                var endDateTime = DateTime.Now;
+                var startDateTime = endDateTime.AddDays(-30);
+                startDateOnly = DateOnly.FromDateTime(startDateTime);
+                endDateOnly = DateOnly.FromDateTime(endDateTime);
+            }
+
+            // Định dạng ngày thành chuỗi "yyyy-MM-dd" để hiển thị trong input
+            ViewBag.StartDate = startDateOnly.ToString("yyyy-MM-dd");
+            ViewBag.EndDate = endDateOnly.ToString("yyyy-MM-dd");
+
+            // Lấy dữ liệu thống kê đăng ký theo thời gian
+            var statisticsData = StatisticsRegistrationByTime(startDate, endDate);
+            var registrationChartData = statisticsData.Select(x => new
+            {
+                Label = $"{x.Year}-{x.Month:D2}-{x.Day:D2}",
+                Count = x.Count
+            }).ToList();
+
+            ViewBag.RegistrationStatistics = new
+            {
+                Labels = registrationChartData.Select(x => x.Label).ToArray(),
+                Data = registrationChartData.Select(x => x.Count).ToArray()
+            };
+
+            // Lấy dữ liệu thống kê donation theo thời gian
+            var donationStatistics = StatisticsDonationByTime(startDate, endDate);
+            var donationChartData = donationStatistics.Select(x => new
+            {
+                Label = $"{x.Year}-{x.Month:D2}-{x.Day:D2}",
+                TotalAmount = x.TotalAmount
+            }).ToList();
+
+            ViewBag.DonationStatistics = new
+            {
+                Labels = donationChartData.Select(x => x.Label).ToArray(),
+                Data = donationChartData.Select(x => x.TotalAmount).ToArray()
+            };
+
+            // Lấy dữ liệu thống kê sự kiện đang hoạt động theo thời gian
+            var eventIsActiveData = StatisticsEventIsActiveByTime(startDate, endDate);
+            var eventIsActiveChartData = eventIsActiveData.Select(x => new
+            {
+                Label = $"{x.Year}-{x.Month:D2}-{x.Day:D2}",
+                Count = x.Count
+            }).ToList();
+
+            ViewBag.EventIsActiveStatistics = new
+            {
+                Labels = eventIsActiveChartData.Select(x => x.Label).ToArray(),
+                Data = eventIsActiveChartData.Select(x => x.Count).ToArray()
+            };
+
+            // Thêm dữ liệu thống kê sự kiện tổng quát
+            var eventSummaryData = StatisticsEventSummary(searchValue: "", startDate: startDate, endDate: endDate);
+            ViewBag.EventSummary = eventSummaryData;
+
             return View();
         }
         #endregion
 
-        #region Hiển thị sự kiện
-        [Route("Event")]
-        public IActionResult Event(int? page)
+        #region đăng ký theo thời gian
+        public List<dynamic> StatisticsRegistrationByTime(string? startDate = null, string? endDate = null)
         {
-            int pageSize = 8;
-            int pageNumber = page ?? 1;
+            DateOnly startDateOnly, endDateOnly;
+            if (!string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate))
+            {
+                startDateOnly = DateOnly.Parse(startDate);
+                endDateOnly = DateOnly.Parse(endDate);
+            }
+            else
+            {
+                var endDateTime = DateTime.Now;
+                var startDateTime = endDateTime.AddDays(-30);
+                startDateOnly = DateOnly.FromDateTime(startDateTime);
+                endDateOnly = DateOnly.FromDateTime(endDateTime);
+            }
 
-            var lstEvent = _db.Events.AsNoTracking()
-                            .OrderBy(x => x.EventId)
-                            .ToPagedList(pageNumber, pageSize);
-            return View(lstEvent);
+            var data = _db.Registrations
+                .Where(r => r.Status == "ACCEPTED")
+                .Where(r => r.RegisterAt.HasValue)
+                .Where(r => r.RegisterAt.Value >= startDateOnly && r.RegisterAt.Value <= endDateOnly)
+                .GroupBy(r => r.RegisterAt.Value)
+                .Select(g => new
+                {
+                    Date = g.Key,
+                    Count = g.Count()
+                })
+                .ToDictionary(x => x.Date, x => x.Count);
+
+            // Create a list of all dates in the range with counts
+            var result = new List<dynamic>();
+            for (var date = startDateOnly; date <= endDateOnly; date = date.AddDays(1))
+            {
+                result.Add(new
+                {
+                    Year = date.Year,
+                    Month = date.Month,
+                    Day = date.Day,
+                    Count = data.ContainsKey(date) ? data[date] : 0
+                });
+            }
+
+            return result;
         }
         #endregion
 
-        #region Thêm sự kiện
-        [Route("CreateEvent")]
+        #region Event tổ chức theo thời gian
+        public List<dynamic> StatisticsEventIsActiveByTime(string? startDate = null, string? endDate = null)
+        {
+            DateOnly startDateOnly, endDateOnly;
+            if (!string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate))
+            {
+                startDateOnly = DateOnly.Parse(startDate);
+                endDateOnly = DateOnly.Parse(endDate);
+            }
+            else
+            {
+                var endDateTime = DateTime.Now;
+                var startDateTime = endDateTime.AddDays(-30);
+                startDateOnly = DateOnly.FromDateTime(startDateTime);
+                endDateOnly = DateOnly.FromDateTime(endDateTime);
+            }
+
+            var eventData = _db.Events
+                .Where(e => e.DayBegin.HasValue && e.DayEnd.HasValue)
+                .Where(e => e.Status == "ACCEPTED")
+                .Where(e => e.DayBegin.Value <= endDateOnly && e.DayEnd.Value >= startDateOnly)
+                .GroupBy(e => e.DayBegin.Value)
+                .Select(g => new
+                {
+                    Date = g.Key,
+                    Count = g.Count()
+                })
+                .ToDictionary(x => x.Date, x => x.Count);
+
+            var result = new List<dynamic>();
+            for (var date = startDateOnly; date <= endDateOnly; date = date.AddDays(1))
+            {
+                result.Add(new
+                {
+                    Year = date.Year,
+                    Month = date.Month,
+                    Day = date.Day,
+                    Count = eventData.ContainsKey(date) ? eventData[date] : 0
+                });
+            }
+
+            return result;
+        }
+        #endregion
+
+        #region donation theo thời gian
+        public List<dynamic> StatisticsDonationByTime(string? startDate = null, string? endDate = null)
+        {
+            // Xác định khoảng thời gian
+            DateOnly startDateOnly, endDateOnly;
+            if (!string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate))
+            {
+                startDateOnly = DateOnly.Parse(startDate);
+                endDateOnly = DateOnly.Parse(endDate);
+            }
+            else
+            {
+                var endDateTime = DateTime.Now;
+                var startDateTime = endDateTime.AddDays(-30);
+                startDateOnly = DateOnly.FromDateTime(startDateTime);
+                endDateOnly = DateOnly.FromDateTime(endDateTime);
+            }
+
+            // Lấy dữ liệu, group theo ngày và tính tổng Amount
+            var data = _db.Donations
+                .Where(d => d.DonationDate.HasValue)
+                .AsEnumerable() // xử lý DateOnly ở client-side
+                .Where(d => DateOnly.FromDateTime(d.DonationDate.Value) >= startDateOnly
+                        && DateOnly.FromDateTime(d.DonationDate.Value) <= endDateOnly)
+                .GroupBy(d => DateOnly.FromDateTime(d.DonationDate.Value))
+                .Select(g => new
+                {
+                    Date = g.Key,
+                    TotalAmount = g.Sum(x => x.Amount)
+                })
+                .ToDictionary(x => x.Date, x => x.TotalAmount);
+
+            // Tạo danh sách tất cả ngày trong khoảng, nếu không có thì mặc định 0
+            var result = new List<dynamic>();
+            for (var date = startDateOnly; date <= endDateOnly; date = date.AddDays(1))
+            {
+                result.Add(new
+                {
+                    Year = date.Year,
+                    Month = date.Month,
+                    Day = date.Day,
+                    TotalAmount = data.ContainsKey(date) ? data[date] : 0
+                });
+            }
+
+            return result;
+        }
+        #endregion
+
+
+        #region Bảng thống kê tổng quát
+        public List<dynamic> StatisticsEventSummary(string searchValue = "", string? startDate = null, string? endDate = null)
+        {
+            DateTime startDateTime, endDateTime;
+            if (!string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate))
+            {
+                startDateTime = DateTime.Parse(startDate);
+                endDateTime = DateTime.Parse(endDate);
+            }
+            else
+            {
+                endDateTime = DateTime.Now;
+                startDateTime = endDateTime.AddDays(-30);
+            }
+
+            var eventQuery = _db.Events.AsQueryable(); // Loại bỏ điều kiện orgId
+            if (!string.IsNullOrEmpty(searchValue))
+            {
+                eventQuery = eventQuery.Where(e => e.Name != null && e.Name.Contains(searchValue));
+            }
+
+            var events = eventQuery.ToList();
+
+            var registrationCounts = _db.Registrations
+                .Where(r => events.Select(e => e.EventId).Contains(r.EventId) && r.RegisterAt.HasValue)
+                .AsEnumerable()
+                .Where(r => r.RegisterAt!.Value.ToDateTime(TimeOnly.MinValue) >= startDateTime &&
+                            r.RegisterAt!.Value.ToDateTime(TimeOnly.MinValue) <= endDateTime)
+                .GroupBy(r => r.EventId)
+                .Select(g => new { EventId = g.Key ?? string.Empty, Count = g.Count() })
+                .ToDictionary(g => g.EventId, g => g.Count);
+
+            var donationAmounts = _db.Donations
+                .Where(d => events.Select(e => e.EventId).Contains(d.EventId) && d.DonationDate.HasValue)
+                .AsEnumerable()
+                .Where(d => d.DonationDate!.Value >= startDateTime && d.DonationDate!.Value <= endDateTime)
+                .GroupBy(d => d.EventId)
+                .Select(g => new { EventId = g.Key ?? string.Empty, TotalAmount = g.Sum(d => d.Amount ?? 0) })
+                .ToDictionary(g => g.EventId, g => g.TotalAmount);
+
+            var data = events.Select(e => new
+            {
+                EventName = e.Name ?? "Sự kiện không tên",
+                RegistrationCount = registrationCounts.ContainsKey(e.EventId) ? registrationCounts[e.EventId] : 0,
+                DonationAmount = donationAmounts.ContainsKey(e.EventId) ? donationAmounts[e.EventId] : 0
+            })
+            .OrderBy(x => x.EventName)
+            .ToList();
+
+            Console.WriteLine($"Event Summary Statistics: {Newtonsoft.Json.JsonConvert.SerializeObject(data)}");
+
+            return data.Cast<dynamic>().ToList();
+        }
+        #endregion
+
+        #region Xuất Excel
         [HttpGet]
-        public IActionResult CreateEvent()
+        [Route("ExportEventSummaryReport")]
+        public IActionResult ExportEventSummaryReport(string searchValue = "", string? startDate = null, string? endDate = null)
         {
-            var orgId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(orgId))
-            {
-                return RedirectToAction("Login", "Account", new { area = "" });
-            }
-            ViewBag.OrgId = orgId;
+            Console.WriteLine($"ExportEventSummaryReport called with searchValue: {searchValue}, startDate: {startDate}, endDate: {endDate}");
 
-            // Lấy EventId lớn nhất từ database
-            var lastEvent = _db.Events
-                .OrderByDescending(e => e.EventId)
-                .FirstOrDefault();
+            var data = StatisticsEventSummary(searchValue, startDate, endDate);
 
-            string newEventId = "EVT1"; // Giá trị mặc định nếu không có event nào
-            if (lastEvent != null)
+            using (var package = new ExcelPackage())
             {
-                // Giả sử EventId có định dạng "EVT" + số (EVT1, EVT2, ...)
-                string lastIdNumber = lastEvent.EventId.Replace("EVT", "");
-                if (int.TryParse(lastIdNumber, out int number))
+                var worksheet = package.Workbook.Worksheets.Add("Thống kê sự kiện");
+
+                worksheet.Cells[1, 1].Value = "Thống kê tổng hợp sự kiện";
+                worksheet.Cells[1, 1, 1, 3].Merge = true;
+                worksheet.Cells[1, 1].Style.Font.Size = 16;
+                worksheet.Cells[1, 1].Style.Font.Bold = true;
+                worksheet.Cells[1, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+                string formattedStartDate = string.IsNullOrEmpty(startDate) ? DateTime.Now.AddDays(-30).ToString("dd/MM/yyyy") : DateOnly.Parse(startDate).ToString("dd/MM/yyyy");
+                string formattedEndDate = string.IsNullOrEmpty(endDate) ? DateTime.Now.ToString("dd/MM/yyyy") : DateOnly.Parse(endDate).ToString("dd/MM/yyyy");
+                worksheet.Cells[2, 1].Value = $"Thống kê từ ngày {formattedStartDate} đến ngày {formattedEndDate}";
+                worksheet.Cells[2, 1, 2, 3].Merge = true;
+                worksheet.Cells[2, 1].Style.Font.Size = 12;
+                worksheet.Cells[2, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+                worksheet.Cells[3, 1].Value = "Tên sự kiện";
+                worksheet.Cells[3, 2].Value = "Số lượt tham gia";
+                worksheet.Cells[3, 3].Value = "Số tiền ủng hộ (VND)";
+                worksheet.Cells[3, 1, 3, 3].Style.Font.Bold = true;
+                worksheet.Cells[3, 1, 3, 3].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                worksheet.Cells[3, 1, 3, 3].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+                worksheet.Cells[3, 1, 3, 3].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+                int row = 4;
+                foreach (var item in data)
                 {
-                    newEventId = $"EVT{number + 1}";
-                }
-            }
-
-            // Tạo model với EventId tự động và OrgId
-            var model = new Event
-            {
-                EventId = newEventId,
-                OrgId = orgId
-            };
-
-            return View(model);
-        }
-
-        [Route("CreateEvent")]
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> CreateEvent(
-    [Bind("EventId,OrgId,type_event_name,Name,Description,DayBegin,DayEnd,Location,TargetMember,TargetFunds,Status")]
-    Event eventModel,
-    IFormFile imagePath,  // Chú ý tên tham số
-    IEnumerable<IFormFile> listImg)  // Chú ý tên tham số
-        {
-
-            Console.WriteLine($"Name: {eventModel?.Name}");
-            Console.WriteLine($"DayEnd: {eventModel?.DayEnd}");
-            if (!ModelState.IsValid)
-            {
-                // Log các lỗi model state
-                var errors = ModelState.Values.SelectMany(v => v.Errors);
-                foreach (var error in errors)
-                {
-                    Console.WriteLine(error.ErrorMessage);
-                }
-                return View(eventModel);
-            }
-            // Xử lý ảnh chính (không bắt buộc)
-            if (imagePath != null && imagePath.Length > 0)  // Chỉ xử lý nếu có file
-            {
-                var fileName = Path.GetFileName(imagePath.FileName);
-                var filePath = Path.Combine("wwwroot/uploads", fileName);
-                using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await imagePath.CopyToAsync(stream);
-                }
-                eventModel.ImagePath = "/uploads/" + fileName;
-            }
-
-            // Xử lý ảnh phụ (không bắt buộc)
-            if (listImg != null && listImg.Any())  // Chỉ xử lý nếu có ít nhất 1 file
-            {
-                var imagePaths = new List<string>();
-                foreach (var file in listImg)
-                {
-                    if (file.Length > 0)
-                    {
-                        var fileName = Path.GetFileName(file.FileName);
-                        var filePath = Path.Combine("wwwroot/uploads", fileName);
-                        using (var stream = new FileStream(filePath, FileMode.Create))
-                        {
-                            await file.CopyToAsync(stream);
-                        }
-                        imagePaths.Add("/uploads/" + fileName);
-                    }
-                }
-                eventModel.ListImg = string.Join(",", imagePaths);
-            }
-
-            // Xử lý lưu vào database
-            if (ModelState.IsValid)
-            {
-                _db.Add(eventModel);
-                await _db.SaveChangesAsync();
-                return RedirectToAction("Event");
-            }
-
-            // Nếu có lỗi, hiển thị lại form
-            return View(eventModel);
-        }
-
-        #endregion
-
-        #region Chỉnh sửa sự kiện
-        [Route("EditEvent/{id}")]
-        [HttpGet]
-        public async Task<IActionResult> EditEvent(string id)
-        {
-            var orgId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(orgId))
-            {
-                return RedirectToAction("Login", "Account", new { area = "" });
-            }
-
-            var eventModel = await _db.Events.FindAsync(id);
-            if (eventModel == null)
-            {
-                return NotFound();
-            }
-            ViewBag.OrgId = eventModel.OrgId; // Truyền dữ liệu tổ chức vào View
-            return View(eventModel);
-        }
-
-        [Route("EditEvent/{id}")]
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> EditEvent(Event model, IFormFile? imagePath, IFormFileCollection? listImg)
-        {
-            if (!ModelState.IsValid)
-            {
-                ViewBag.OrgId = model.OrgId;
-                return View(model);
-            }
-
-            var existingEvent = await _db.Events.FindAsync(model.EventId);
-            if (existingEvent == null)
-            {
-                return NotFound();
-            }
-
-            // Cập nhật dữ liệu từ form
-            existingEvent.Name = model.Name;
-            existingEvent.TargetMember = model.TargetMember;
-            existingEvent.Status = model.Status;
-            existingEvent.TypeEventName = model.TypeEventName;
-            existingEvent.DayBegin = model.DayBegin;
-            existingEvent.DayEnd = model.DayEnd;
-            existingEvent.Location = model.Location;
-            existingEvent.TargetFunds = model.TargetFunds;
-            existingEvent.Description = model.Description;
-
-            // Xử lý ảnh nếu có upload
-            if (imagePath != null)
-            {
-                existingEvent.ImagePath = await SaveImage(imagePath);
-                existingEvent.ListImg = await SaveImageList(listImg);
-            }
-
-            _db.Update(existingEvent);
-            await _db.SaveChangesAsync();
-
-            return RedirectToAction("Event");
-        }
-
-        private async Task<string> SaveImage(IFormFile image)
-        {
-            if (image == null || image.Length == 0)
-            {
-                return string.Empty;
-            }
-
-            string uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
-            if (!Directory.Exists(uploadsFolder))
-            {
-                Directory.CreateDirectory(uploadsFolder);
-            }
-
-            string uniqueFileName = Guid.NewGuid().ToString() + Path.GetExtension(image.FileName);
-            string filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-            using (var fileStream = new FileStream(filePath, FileMode.Create))
-            {
-                await image.CopyToAsync(fileStream);
-            }
-
-            return "/uploads/" + uniqueFileName; // Trả về đường dẫn ảnh
-        }
-        private async Task<string> SaveImageList(IFormFileCollection? listImages)
-        {
-            if (listImages == null || listImages.Count == 0)
-            {
-                return string.Empty;
-            }
-
-            string uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
-            if (!Directory.Exists(uploadsFolder))
-            {
-                Directory.CreateDirectory(uploadsFolder);
-            }
-
-            var savedPaths = new List<string>();
-
-            foreach (var image in listImages)
-            {
-                if (image.Length > 0)
-                {
-                    string uniqueFileName = Guid.NewGuid().ToString() + Path.GetExtension(image.FileName);
-                    string filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await image.CopyToAsync(fileStream);
-                    }
-
-                    savedPaths.Add("/uploads/" + uniqueFileName);
-                }
-            }
-
-            return string.Join(",", savedPaths); // Trả về các đường dẫn cách nhau bởi dấu phẩy
-        }
-        #endregion
-
-        #region Xóa sự kiện
-        [Route("DeleteEvent")]
-        [HttpPost]
-        public IActionResult DeleteEvent(string id)
-        {
-            TempData["Message"] = "";
-
-            var registrations = _db.Registrations.Where(x => x.EventId == id).ToList();
-            var donations = _db.Donations.Where(x => x.EventId == id).ToList();
-
-            if (registrations.Count > 0 || donations.Count > 0)
-            {
-                TempData["Message"] = "Can not delete";
-                return RedirectToAction("Event");
-            }
-
-            var eventToDelete = _db.Events.Find(id);
-            if (eventToDelete != null)
-            {
-                try
-                {
-                    // Logic xóa
-                    _db.Events.Remove(_db.Events.Find(id));
-                    _db.SaveChanges();
-
-                    // Trả về JSON thay vì Redirect
-                    return Json(new
-                    {
-                        success = true,
-                        message = "Xóa thành công"
-                    });
-                }
-                catch (Exception ex)
-                {
-                    return Json(new
-                    {
-                        success = false,
-                        message = ex.Message
-                    });
-                }
-            }
-            return RedirectToAction("Event");
-        }
-
-        #endregion
-
-        #region Xem chi tiết sự kiện 
-        [Route("GetEventDetails")]
-        [HttpGet]
-        public IActionResult GetEventDetails(string id)
-        {
-            try
-            {
-                var events = _db.Events.FirstOrDefault(v => v.EventId == id);
-                var registrationCount = _db.Registrations.Count(r => r.EventId == id);
-                var donationCount = _db.Donations.Count(d => d.EventId == id);
-                var totalAmount = _db.Donations.Where(d => d.EventId == id).Sum(d => d.Amount);
-
-                if (events == null)
-                {
-                    return Json(new { success = false, message = "Event not found" });
+                    worksheet.Cells[row, 1].Value = item.EventName;
+                    worksheet.Cells[row, 2].Value = item.RegistrationCount;
+                    worksheet.Cells[row, 3].Value = item.DonationAmount;
+                    worksheet.Cells[row, 3].Style.Numberformat.Format = "#,##0";
+                    row++;
                 }
 
-                return Json(new
-                {
-                    success = true,
-                    data = new
-                    {
-                        eventId = events.EventId,
-                        orgId = events.OrgId,
-                        typeEventName = events.TypeEventName,
-                        name = events.Name,
-                        description = events.Description,
-                        dayBegin = events.DayBegin?.ToString("dd/MM/yyyy"),
-                        dayEnd = events.DayEnd?.ToString("dd/MM/yyyy"),
-                        location = events.Location,
-                        targetMember = events.TargetMember,
-                        targetFunds = events.TargetFunds,
-                        imagePath = events.ImagePath,
-                        listImg = events.ListImg,
-                        status = events.Status,
-                        registrationCount,
-                        donationCount,
-                        totalAmount
-                    }
-                });
+                worksheet.Cells[3, 1, row - 1, 3].AutoFitColumns();
+
+                worksheet.Cells[3, 1, row - 1, 3].Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                worksheet.Cells[3, 1, row - 1, 3].Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                worksheet.Cells[3, 1, row - 1, 3].Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                worksheet.Cells[3, 1, row - 1, 3].Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+
+                var stream = new MemoryStream();
+                package.SaveAs(stream);
+                stream.Position = 0;
+
+                string excelName = $"ThongKeSuKien_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+                return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excelName);
             }
-            catch (Exception ex)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = "An error occurred while fetching event details",
-                    error = ex.Message
-                });
-            }
-        }
-        #endregion
-
-        #region Danh sách người đăng kí tham gia
-        [Route("GetRegisteredVolunteers")]
-        public IActionResult GetRegisteredVolunteers(int? page)
-        {
-            int pageSize = 8;
-            int pageNumber = page ?? 1;
-
-            // Lấy danh sách đăng ký kèm theo thông tin Volunteer và Event
-            var lstRegistered = _db.Registrations
-                                   .Include(r => r.Volunteer) // Load dữ liệu Volunteer
-                                   .Include(r => r.Event) // Load dữ liệu Event
-                                   .AsNoTracking()
-                                   .OrderBy(x => x.EventId)
-                                   .ToPagedList(pageNumber, pageSize);
-
-            return View(lstRegistered);
-        }
-
-        #endregion
-
-        #region Cập nhật trạng thái người tham gia
-        [HttpGet]
-        [Route("UpdateStatus")]
-        public IActionResult UpdateStatus(string regId, bool status)
-        {
-            try
-            {
-                var registration = _db.Registrations.FirstOrDefault(r => r.RegId == regId);
-                if (registration == null)
-                {
-                    return Json(new { success = false, message = "Registration not found" });
-                }
-
-                registration.Status = status;
-                _db.SaveChanges();
-
-                return Json(new
-                {
-                    success = true,
-                    message = status ? "Registration approved" : "Registration rejected"
-                });
-            }
-            catch (Exception ex)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = $"Error: {ex.Message}"
-                });
-            }
-        }
-        #endregion
-
-        #region Xem chi tiết người tham gia
-        [Route("GetVolunteerDetails")]
-        [HttpGet]
-        public IActionResult GetVolunteerDetails(string id)
-        {
-            try
-            {
-                var volunteer = _db.Volunteers
-                    .FirstOrDefault(v => v.VolunteerId == id);
-
-                if (volunteer == null)
-                {
-                    return Json(new { success = false, message = "Volunteer not found" });
-                }
-
-                return Json(new
-                {
-                    success = true,
-                    data = new
-                    {
-                        volunteerId = volunteer.VolunteerId,
-                        name = volunteer.Name,
-                        email = volunteer.Email,
-                        phoneNumber = volunteer.PhoneNumber,
-                        dateOfBirth = volunteer.DateOfBirth?.ToString("dd/MM/yyyy"),
-                        gender = volunteer.Gender.HasValue ?
-                            (volunteer.Gender.Value ? "Male" : "Female") : "Not specified",
-                        imagePath = volunteer.ImagePath,
-                        address = volunteer.Address
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = "An error occurred while fetching volunteer details",
-                    error = ex.Message
-                });
-            }
-        }
-        #endregion
-
-        #region Xem danh sách người Donation
-        [Route("GetDonatedVolunteer")]
-        public IActionResult GetDonatedVolunteer(int? page)
-        {
-            int pageSize = 8;
-            int pageNumber = page ?? 1;
-            var lstDonated = _db.Donations.Include(r => r.Volunteer)
-                                          .Include(r => r.Event)
-                                          .AsNoTracking()
-                                          .OrderBy(x => x.EventId)
-                                          .ToPagedList(pageNumber, pageSize);
-            return View(lstDonated);
         }
         #endregion
 
         #region Logout
-        [HttpPost]
-        [Route ("")]
-        [Route("Logout")]
+        [HttpGet]
         public async Task<IActionResult> Logout()
         {
-            Console.WriteLine("Sao không thấy taoooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo");
-            await HttpContext.SignOutAsync("Admin");
-            return Redirect("~/index_guess.html");
+            await HttpContext.SignOutAsync();
+            return RedirectToAction("Login", "Account", new { area = "" });
         }
         #endregion
     }
 }
+

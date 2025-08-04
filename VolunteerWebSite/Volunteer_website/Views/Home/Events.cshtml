@@ -1,247 +1,459 @@
-﻿
+﻿@model IEnumerable<Volunteer_website.Models.Event>
 @{
     ViewData["Title"] = "Events";
+    Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
-<div class="hero-wrap"
-     style="background-image: url('@Url.Content("~/images/Banner.jpg")')"
-     data-stellar-background-ratio="0.5">
+<head>
+    <link rel="stylesheet" href="~/css/Cause.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+</head>
+
+<div class="hero-wrap" style="background-image: url('@Url.Content("~/images/bg_1.jpg")');" data-stellar-background-ratio="0.5">
     <div class="overlay"></div>
     <div class="container">
-        <div class="row no-gutters slider-text align-items-center justify-content-center"
-             data-scrollax-parent="true">
-            <div class="col-md-7 ftco-animate text-center"
-                 data-scrollax=" properties: { translateY: '70%' }">
-                <p class="breadcrumbs"
-                   data-scrollax="properties: { translateY: '30%', opacity: 1.6 }">
-                    <span class="mr-2"><a href="index.html">Home</a></span>
+        <div class="row no-gutters slider-text align-items-center justify-content-center" data-scrollax-parent="true">
+            <div class="col-md-7 ftco-animate text-center" data-scrollax=" properties: { translateY: '70%' }">
+                <p class="breadcrumbs" data-scrollax="properties: { translateY: '30%', opacity: 1.6 }">
+                    <span class="mr-2"><a href="@Url.Action("Index", "Home")">Home </a></span>
                     <span>Event</span>
                 </p>
-                <h1 class="mb-3 bread"
-                    data-scrollax="properties: { translateY: '30%', opacity: 1.6 }">
-                    Events
-                </h1>
+                <h1 class="mb-3 bread" data-scrollax="properties: { translateY: '30%', opacity: 1.6 }">EVENT</h1>
             </div>
         </div>
     </div>
 </div>
 
-<section class="ftco-section">
+<section class="ftco-section pt-3">
     <div class="container">
         <div class="row">
-            <div class="col-md-4 d-flex ftco-animate">
-                <div class="blog-entry align-self-stretch">
-                    <a href="blog-single.html"
-                       class="block-20"
-                       style="background-image: url('images/event-1.jpg')">
-                    </a>
-                    <div class="text p-4 d-block">
-                        <div class="meta mb-3">
-                            <div><a href="#">Sep. 10, 2018</a></div>
-                            <div><a href="#">Admin</a></div>
-                            <div>
-                                <a href="#" class="meta-chat"><span class="icon-chat"></span> 3</a>
-                            </div>
+            @{
+                var today = DateOnly.FromDateTime(DateTime.Today);
+            }
+            <div class="event-filter-container container">
+                <div class="event-filter-nav d-flex gap-2 mb-3">
+                    <button class="event-tab-button active" data-filter="ongoing">Đang diễn ra</button>
+                    <button class="event-tab-button" data-filter="upcoming">Sắp diễn ra</button>
+                    <button class="event-tab-button" data-filter="ended">Đã kết thúc</button>
+                </div>
+
+                <div class="row mb-3 align-items-center">
+                    <div class="col-md-3">
+                        <div class="event-filter-input">
+                            <select id="eventTypeFilter">
+                                <option value="">Tất cả loại sự kiện</option>
+                                @foreach (var type in Model.Select(e => e.TypeEvent?.Name).Distinct().Where(t => !string.IsNullOrEmpty(t)))
+                                {
+                                    <option value="@type">@type</option>
+                                }
+                            </select>
+                            <i class="fa fa-chevron-down event-search-icon"></i>
                         </div>
-                        <h3 class="heading mb-4">
-                            <a href="#">World Wide Donation</a>
-                        </h3>
-                        <p class="time-loc">
-                            <span class="mr-2"><i class="icon-clock-o"></i> 10:30AM-03:30PM</span>
-                            <span><i class="icon-map-o"></i> Venue Main Campus</span>
-                        </p>
-                        <p>
-                            A small river named Duden flows by their place and supplies it
-                            with the necessary regelialia.
-                        </p>
-                        <p>
-                            <a href="event.html">
-                                Join Event <i class="ion-ios-arrow-forward"></i>
-                            </a>
-                        </p>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="event-date-range">
+                            <input type="date" id="startDateFrom" placeholder="Từ ngày">
+                            <span>đến</span>
+                            <input type="date" id="startDateTo" placeholder="Đến ngày">
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 text-right">
+                        <button id="applyFilter" class="event-filter-apply">Lọc</button>
+                        <button id="resetFilter" class="event-filter-reset">Đặt lại</button>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="event-filter-input">
+                            <input type="text" id="eventNameSearch" placeholder="Tìm kiếm sự kiện...">
+                            <i class="fa fa-search event-search-icon"></i>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="event-filter-input">
+                            <input type="text" id="organizationSearch" placeholder="Tìm ban tổ chức...">
+                            <i class="fa fa-search event-search-icon"></i>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4 d-flex ftco-animate">
-                <div class="blog-entry align-self-stretch">
-                    <a href="blog-single.html"
-                       class="block-20"
-                       style="background-image: url('images/event-2.jpg')">
-                    </a>
-                    <div class="text p-4 d-block">
-                        <div class="meta mb-3">
-                            <div><a href="#">Sep. 10, 2018</a></div>
-                            <div><a href="#">Admin</a></div>
-                            <div>
-                                <a href="#" class="meta-chat"><span class="icon-chat"></span> 3</a>
+
+            @if (Model == null || !Model.Any())
+            {
+                <div class="col-12 text-center">
+                    <p>Không có sự kiện nào phù hợp với bộ lọc.</p>
+                </div>
+            }
+            else
+            {
+                @foreach (var ev in Model)
+                {
+                    var daysLeft = (ev.DayEnd.HasValue ? ev.DayEnd.Value.DayNumber : today.DayNumber) - today.DayNumber;
+                    var currentFund = ev.Donations?.Sum(d => d.Amount ?? 0) ?? 0;
+                    var targetFund = ev.TargetFunds ?? 1; // Tránh chia cho 0
+                    var percentFund = targetFund > 0 ? (int)((double)currentFund / targetFund * 100) : 0;
+                    var currentMember = ev.Registrations?.Count(r => r.Status == "ACCEPTED") ?? 0;
+
+                    var eventStatus = "";
+                    if (ev.DayBegin.HasValue && ev.DayEnd.HasValue)
+                    {
+                        if (today >= ev.DayBegin.Value && today <= ev.DayEnd.Value)
+                        {
+                            eventStatus = "ongoing";
+                        }
+                        else if (today < ev.DayBegin.Value)
+                        {
+                            eventStatus = "upcoming";
+                        }
+                        else
+                        {
+                            eventStatus = "ended";
+                        }
+                    }
+                    else
+                    {
+                        eventStatus = "ended"; // Nếu không có ngày, coi như đã kết thúc
+                    }
+
+                    <div class="col-md-4 ftco-animate mb-4 event-card"
+                         data-status="@eventStatus"
+                         data-date-begin="@(ev.DayBegin.HasValue ? ev.DayBegin.Value.ToString("yyyy-MM-dd") : "")"
+                         data-date-end="@(ev.DayEnd.HasValue ? ev.DayEnd.Value.ToString("yyyy-MM-dd") : "")"
+                         data-event-type="@(ev.TypeEvent?.Name ?? "")">
+                        <div class="card">
+                            <img src="~/@Url.Content(string.IsNullOrEmpty(ev.ImagePath) ? "./images/DefaultImg/VolunteerImgDefault.jpg" : ev.ImagePath)" alt="@ev.Name" />
+                            <div class="card-content">
+                                <span class="card-title">@(ev.Name ?? "Không có tên")</span>
+                                <div class="org-info">
+                                    <span>@(ev.Org?.Name ?? "N/A")</span>
+                                    <span style="background: #ffcc99; padding: 5px 10px; border-radius: 5px;">
+                                        @(daysLeft > 0 ? $"{daysLeft} Days Left" : "Closed")
+                                    </span>
+                                </div>
+                                <div class="progress-container">
+                                    <div class="progress-bar" style="width: @percentFund%"></div>
+                                </div>
+                                <span class="fund-raised">
+                                    @currentFund.ToString("N0") / @targetFund.ToString("N0")
+                                </span>
+                                <span class="donation-group">
+                                    <span class="donation-count">
+                                        <div>Members</div>
+                                        <span class="count">
+                                            @currentMember.ToString("N0") / @(ev.TargetMember?.ToString("N0") ?? "0")
+                                        </span>
+                                    </span>
+                                    <a href="@Url.Action("Detail_Event", "Home", new { id = ev.EventId })" class="donate-btn">
+                                        @(ev.IsActive == 1 ? "View" : "Closed")
+                                    </a>
+                                </span>
                             </div>
                         </div>
-                        <h3 class="heading mb-4">
-                            <a href="#">World Wide Donation</a>
-                        </h3>
-                        <p class="time-loc">
-                            <span class="mr-2"><i class="icon-clock-o"></i> 10:30AM-03:30PM</span>
-                            <span><i class="icon-map-o"></i> Venue Main Campus</span>
-                        </p>
-                        <p>
-                            A small river named Duden flows by their place and supplies it
-                            with the necessary regelialia.
-                        </p>
-                        <p>
-                            <a href="event.html">
-                                Join Event <i class="ion-ios-arrow-forward"></i>
-                            </a>
-                        </p>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-4 d-flex ftco-animate">
-                <div class="blog-entry align-self-stretch">
-                    <a href="blog-single.html"
-                       class="block-20"
-                       style="background-image: url('images/event-3.jpg')">
-                    </a>
-                    <div class="text p-4 d-block">
-                        <div class="meta mb-3">
-                            <div><a href="#">Sep. 10, 2018</a></div>
-                            <div><a href="#">Admin</a></div>
-                            <div>
-                                <a href="#" class="meta-chat"><span class="icon-chat"></span> 3</a>
-                            </div>
-                        </div>
-                        <h3 class="heading mb-4">
-                            <a href="#">World Wide Donation</a>
-                        </h3>
-                        <p class="time-loc">
-                            <span class="mr-2"><i class="icon-clock-o"></i> 10:30AM-03:30PM</span>
-                            <span><i class="icon-map-o"></i> Venue Main Campus</span>
-                        </p>
-                        <p>
-                            A small river named Duden flows by their place and supplies it
-                            with the necessary regelialia.
-                        </p>
-                        <p>
-                            <a href="event.html">
-                                Join Event <i class="ion-ios-arrow-forward"></i>
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 d-flex ftco-animate">
-                <div class="blog-entry align-self-stretch">
-                    <a href="blog-single.html"
-                       class="block-20"
-                       style="background-image: url('images/event-4.jpg')">
-                    </a>
-                    <div class="text p-4 d-block">
-                        <div class="meta mb-3">
-                            <div><a href="#">Sep. 10, 2018</a></div>
-                            <div><a href="#">Admin</a></div>
-                            <div>
-                                <a href="#" class="meta-chat"><span class="icon-chat"></span> 3</a>
-                            </div>
-                        </div>
-                        <h3 class="heading mb-4">
-                            <a href="#">World Wide Donation</a>
-                        </h3>
-                        <p class="time-loc">
-                            <span class="mr-2"><i class="icon-clock-o"></i> 10:30AM-03:30PM</span>
-                            <span><i class="icon-map-o"></i> Venue Main Campus</span>
-                        </p>
-                        <p>
-                            A small river named Duden flows by their place and supplies it
-                            with the necessary regelialia.
-                        </p>
-                        <p>
-                            <a href="event.html">
-                                Join Event <i class="ion-ios-arrow-forward"></i>
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 d-flex ftco-animate">
-                <div class="blog-entry align-self-stretch">
-                    <a href="blog-single.html"
-                       class="block-20"
-                       style="background-image: url('images/event-5.jpg')">
-                    </a>
-                    <div class="text p-4 d-block">
-                        <div class="meta mb-3">
-                            <div><a href="#">Sep. 10, 2018</a></div>
-                            <div><a href="#">Admin</a></div>
-                            <div>
-                                <a href="#" class="meta-chat"><span class="icon-chat"></span> 3</a>
-                            </div>
-                        </div>
-                        <h3 class="heading mb-4">
-                            <a href="#">World Wide Donation</a>
-                        </h3>
-                        <p class="time-loc">
-                            <span class="mr-2"><i class="icon-clock-o"></i> 10:30AM-03:30PM</span>
-                            <span><i class="icon-map-o"></i> Venue Main Campus</span>
-                        </p>
-                        <p>
-                            A small river named Duden flows by their place and supplies it
-                            with the necessary regelialia.
-                        </p>
-                        <p>
-                            <a href="event.html">
-                                Join Event <i class="ion-ios-arrow-forward"></i>
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 d-flex ftco-animate">
-                <div class="blog-entry align-self-stretch">
-                    <a href="blog-single.html"
-                       class="block-20"
-                       style="background-image: url('images/event-6.jpg')">
-                    </a>
-                    <div class="text p-4 d-block">
-                        <div class="meta mb-3">
-                            <div><a href="#">Sep. 10, 2018</a></div>
-                            <div><a href="#">Admin</a></div>
-                            <div>
-                                <a href="#" class="meta-chat"><span class="icon-chat"></span> 3</a>
-                            </div>
-                        </div>
-                        <h3 class="heading mb-4">
-                            <a href="#">World Wide Donation</a>
-                        </h3>
-                        <p class="time-loc">
-                            <span class="mr-2"><i class="icon-clock-o"></i> 10:30AM-03:30PM</span>
-                            <span><i class="icon-map-o"></i> Venue Main Campus</span>
-                        </p>
-                        <p>
-                            A small river named Duden flows by their place and supplies it
-                            with the necessary regelialia.
-                        </p>
-                        <p>
-                            <a href="event.html">
-                                Join Event <i class="ion-ios-arrow-forward"></i>
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
+                }
+            }
         </div>
+
         <div class="row mt-5">
             <div class="col text-center">
-                <div class="block-27">
+                <div class="event-pagination">
                     <ul>
-                        <li><a href="#">&lt;</a></li>
-                        <li class="active"><span>1</span></li>
-                        <li><a href="#">2</a></li>
-                        <li><a href="#">3</a></li>
-                        <li><a href="#">4</a></li>
-                        <li><a href="#">5</a></li>
-                        <li><a href="#">&gt;</a></li>
+                        <li>
+                            @if (ViewBag.CurrentPage > 1)
+                            {
+                                <a href="@Url.Action("Events", "Home", new { page = ViewBag.CurrentPage - 1, pageSize = ViewBag.PageSize, statusFilter = ViewBag.StatusFilter, eventName = ViewBag.EventName, organization = ViewBag.Organization, startDateFrom = ViewBag.StartDateFrom, startDateTo = ViewBag.StartDateTo, eventType = ViewBag.EventType })">&lt;</a>
+                            }
+                            else
+                            {
+                                <span>&lt;</span>
+                            }
+                        </li>
+
+                        @{
+                            int startPage = Math.Max(1, ViewBag.CurrentPage - 2);
+                            int endPage = Math.Min(ViewBag.TotalPages, ViewBag.CurrentPage + 2);
+
+                            if (endPage - startPage < 4)
+                            {
+                                if (startPage == 1)
+                                {
+                                    endPage = Math.Min(ViewBag.TotalPages, startPage + 4);
+                                }
+                                else if (endPage == ViewBag.TotalPages)
+                                {
+                                    startPage = Math.Max(1, endPage - 4);
+                                }
+                            }
+
+                            for (int i = startPage; i <= endPage; i++)
+                            {
+                                if (i == ViewBag.CurrentPage)
+                                {
+                                    <li class="active"><span>@i</span></li>
+                                }
+                                else
+                                {
+                                    <li><a href="@Url.Action("Events", "Home", new { page = i, pageSize = ViewBag.PageSize, statusFilter = ViewBag.StatusFilter, eventName = ViewBag.EventName, organization = ViewBag.Organization, startDateFrom = ViewBag.StartDateFrom, startDateTo = ViewBag.StartDateTo, eventType = ViewBag.EventType })">@i</a></li>
+                                }
+                            }
+                        }
+
+                        <li>
+                            @if (ViewBag.CurrentPage < ViewBag.TotalPages)
+                            {
+                                <a href="@Url.Action("Events", "Home", new { page = ViewBag.CurrentPage + 1, pageSize = ViewBag.PageSize, statusFilter = ViewBag.StatusFilter, eventName = ViewBag.EventName, organization = ViewBag.Organization, startDateFrom = ViewBag.StartDateFrom, startDateTo = ViewBag.StartDateTo, eventType = ViewBag.EventType })">&gt;</a>
+                            }
+                            else
+                            {
+                                <span>&gt;</span>
+                            }
+                        </li>
                     </ul>
                 </div>
             </div>
         </div>
     </div>
 </section>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const tabButtons = document.querySelectorAll('.event-tab-button');
+        const searchInputs = {
+            eventName: document.getElementById('eventNameSearch'),
+            organization: document.getElementById('organizationSearch'),
+            startDateFrom: document.getElementById('startDateFrom'),
+            startDateTo: document.getElementById('startDateTo'),
+            eventType: document.getElementById('eventTypeFilter')
+        };
+        const applyFilterBtn = document.getElementById('applyFilter');
+        const resetFilterBtn = document.getElementById('resetFilter');
+        let currentFilter = '@ViewBag.StatusFilter' || "ongoing";
+
+        function redirectWithFilters() {
+            const query = {
+                page: 1,
+                pageSize: @ViewBag.PageSize,
+                statusFilter: currentFilter,
+                eventName: searchInputs.eventName ? searchInputs.eventName.value : '',
+                organization: searchInputs.organization ? searchInputs.organization.value : '',
+                startDateFrom: searchInputs.startDateFrom ? searchInputs.startDateFrom.value : '',
+                startDateTo: searchInputs.startDateTo ? searchInputs.startDateTo.value : '',
+                eventType: searchInputs.eventType ? searchInputs.eventType.value : ''
+            };
+
+            const url = '@Url.Action("Events", "Home")?' + new URLSearchParams(query).toString();
+            window.location.href = url;
+        }
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', function () {
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                this.classList.add('active');
+                currentFilter = this.getAttribute('data-filter');
+                redirectWithFilters();
+            });
+        });
+
+        if (applyFilterBtn) {
+            applyFilterBtn.addEventListener('click', redirectWithFilters);
+        }
+
+        if (resetFilterBtn) {
+            resetFilterBtn.addEventListener('click', function () {
+                if (searchInputs.eventName) searchInputs.eventName.value = '';
+                if (searchInputs.organization) searchInputs.organization.value = '';
+                if (searchInputs.startDateFrom) searchInputs.startDateFrom.value = '';
+                if (searchInputs.startDateTo) searchInputs.startDateTo.value = '';
+                if (searchInputs.eventType) searchInputs.eventType.value = '';
+                currentFilter = "ongoing";
+                document.querySelector('.event-tab-button[data-filter="ongoing"]').click();
+            });
+        }
+
+        const activeTab = document.querySelector(`.event-tab-button[data-filter="${currentFilter}"]`);
+        if (activeTab) {
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            activeTab.classList.add('active');
+        }
+    });
+</script>
+
+<style>
+    .event-search-container {
+        position: relative;
+        width: 20%;
+        min-width: 200px;
+    }
+
+        .event-search-container input {
+            width: 100%;
+            padding: 10px 38px 10px 16px;
+            border: none;
+            border-radius: 25px;
+            background-color: white;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+            font-size: 14px;
+        }
+
+    .event-search-icon {
+        position: absolute;
+        top: 50%;
+        right: 12px;
+        transform: translateY(-50%);
+        color: #333;
+        font-size: 16px;
+        pointer-events: none;
+    }
+
+    .event-tab-button {
+        background: none;
+        border: none;
+        font-weight: 600;
+        font-size: 16px;
+        color: #666;
+        padding: 8px 12px;
+        border-bottom: 3px solid transparent;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+        .event-tab-button.active {
+            color: orangered;
+            border-color: #8000ff;
+            background-color: #eee;
+        }
+
+        .event-tab-button:hover {
+            background-color: #f0f0f0;
+            color: #000;
+        }
+
+    .event-filter-nav {
+        display: flex;
+        gap: 20px;
+        margin: 0 auto 20px auto;
+        border: 1px solid #ccc;
+        border-radius: 999px;
+        padding: 10px 15px;
+        max-width: 1140px;
+        background-color: #f9f9f9;
+        justify-content: center;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    }
+
+    .event-filter-input {
+        position: relative;
+        width: 100%;
+    }
+
+        .event-filter-input input,
+        .event-filter-input select {
+            width: 100%;
+            padding: 10px 38px 10px 16px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            background-color: white;
+            font-size: 14px;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+
+    .event-date-range {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .event-date-range input {
+            padding: 10px 16px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            background-color: white;
+            font-size: 14px;
+            flex: 1;
+        }
+
+        .event-date-range span {
+            color: #666;
+            font-size: 14px;
+        }
+
+    .event-filter-apply {
+        background-color: orangered;
+        color: white;
+        border: none;
+        margin-right: 10px;
+        padding: 8px 20px;
+        border-radius: 25px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    .event-filter-reset {
+        background-color: #f0f0f0;
+        color: #666;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 25px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    .event-filter-apply:hover {
+        background-color: #6a00d6;
+    }
+
+    .event-filter-reset:hover {
+        background-color: #e0e0e0;
+    }
+
+    .event-pagination ul {
+        display: flex;
+        justify-content: center;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+        .event-pagination ul li {
+            margin: 0 5px;
+        }
+
+            .event-pagination ul li a,
+            .event-pagination ul li span {
+                display: inline-block;
+                padding: 8px 15px;
+                border-radius: 25px;
+                font-size: 14px;
+                font-weight: 600;
+                transition: all 0.3s ease;
+            }
+
+            .event-pagination ul li a {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+
+                .event-pagination ul li a:hover {
+                    background-color: orangered;
+                    color: white;
+                }
+
+            .event-pagination ul li.active span {
+                background-color: orangered;
+                color: white;
+            }
+
+            .event-pagination ul li span {
+                cursor: default;
+            }
+
+</style>

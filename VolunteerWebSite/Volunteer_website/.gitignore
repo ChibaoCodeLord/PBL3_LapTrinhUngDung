@@ -403,4 +403,17 @@ wwwroot/OrgLayout/.history/
 #database
  ../../DataBase/
 
-Helpers/ConstantHelper.cs
+git Helpers/ConstantHelper.cs
+Dependencies/
+Properties/
+obj/
+root/
+Areas/
+Models/
+ViewModel/
+View/Account/
+View/Organization/
+[Bb]in/
+[Oo]bj/
+*.exe
+*.dll

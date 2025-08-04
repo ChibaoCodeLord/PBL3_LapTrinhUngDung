@@ -1,7 +1,7 @@
 ﻿@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 @model X.PagedList.IPagedList<Volunteer_website.Models.Event>
 @using X.PagedList.Mvc.Core
-
+@Html.AntiForgeryToken()
 @{
     ViewData["Title"] = "Event Management";
     Layout = "~/Areas/Admin/Views/AdminLayout.cshtml";
@@ -9,7 +9,7 @@
 <div class="container-fluid">
     <!-- Phần tiêu đề -->
     <div class="header-section border rounded p-4 mb-4" style="background-color: #ffffff;">
-        <h1 class="text-center my-4 heading-title">Event Management</h1>
+        <h1 class="text-center my-4 heading-title">Quản lý sự kiện</h1>
     </div>
     @if (TempData["SuccessMessage"] != null)
     {
@@ -30,8 +30,8 @@
         <!-- Search Bar and Create Button -->
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
             <div class="search-container">
-                <label for="searchBox">Search: </label>
-                <input type="text" id="searchBox" class="form-control search-input" placeholder="Search events..." onkeyup="search()">
+                <label for="searchBox">Tìm: </label>
+                <input type="text" id="searchBox" class="form-control search-input" placeholder="Tìm kiếm ở đây..." onkeyup="search()">
             </div>
         </div>
 
@@ -40,18 +40,22 @@
             <table class="table table-bordered table-hover event-table shadow-sm">
                 <thead class="table-dark">
                     <tr>
-                        <th>Event ID</th>
-                        <th>Event Name</th>
-                        <th>Date</th>
-                        <th>Location</th>
-                        <th>Is active</th>
-                        <th>Status</th>
-                        <th>Actions</th>
+                        <th>Mã</th>
+                        <th>Tên</th>
+                        <th>Ngày diễn ra</th>
+                        <th>Địa chỉ</th>
+                        <th>Đang hoạt động</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
                     </tr>
                 </thead>
-                @if (Model == null)
+                @if (Model == null || !Model.Any())
                 {
-                    <p>No events available.</p>
+                    <tbody>
+                        <tr>
+                            <td colspan="8" class="text-center">No event found</td>
+                        </tr>
+                    </tbody>
                 }
                 else {
                     <tbody id="dataTable">
@@ -66,27 +70,28 @@
                                 <td>@item.Location</td>
                                 <td>
                                     <span class="badge @(item.IsActive == 0 ? "bg-success" : "bg-secondary")">
-                                        @(item.IsActive == 0 ? "Active" : "Inactive")
+                                        @(item.IsActive == 0 ? "Có" : "Không")
+
                                     </span>
                                 </td>
                                 <td>
                                     @if (item.Status == "PENDING")
                                     {
-                                        <span class="badge bg-warning text-dark">PENDING</span>
+                                        <span class="badge bg-warning text-dark">Đang xét</span>
                                     }
-                                    else if (item.Status == "ACCEPT")
+                                    else if (item.Status == "ACCEPTED")
                                     {
-                                        <span class="badge bg-success">ACCEPT</span>
+                                        <span class="badge bg-success">Chấp nhận</span>
                                     }
-                                    else if (item.Status == "REJECT")
+                                    else if (item.Status == "REJECTED")
                                     {
-                                        <span class="badge bg-danger">REJECT</span>
+                                        <span class="badge bg-danger">Từ chối</span>
                                     }
                                 </td>
                                 <td class="action_btn">
-                                    <button onclick="showEventDetails('@item.EventId')" class="btn btn-info btn-sm action-btn">
+                                    <a asp-controller="EventManager" asp-action="EventDetails" asp-route-id="@item.EventId" class="btn btn-info btn-sm view-event-detail action-btn">
                                         <i class="fa-solid fa-eye"></i>
-                                    </button>
+                                    </a>
                                     <button onclick="confirmAccept('@item.EventId')" class="btn btn-success btn-sm action-btn">
                                         <i class="fa-solid fa-check"></i>
                                     </button>
@@ -96,135 +101,6 @@
                                 </td>
                             </tr>
                         }
-                        <!-- Popup Chi Tiết Sự Kiện - Chỉ Đọc -->
-                        <div class="modal fade" id="eventDetailsModal" tabindex="-1" aria-labelledby="eventDetailsLabel" aria-hidden="true">
-                            <div class="modal-dialog modal-lg">
-                                <div class="modal-content">
-                                    <div class="modal-header bg-primary text-white">
-                                        <h5 class="modal-title" id="eventDetailsLabel">
-                                            <i class="bi bi-calendar-event me-2"></i>CHI TIẾT SỰ KIỆN
-                                        </h5>
-                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                                    </div>
-                                    <div class="modal-body">
-                                        <div class="row">
-                                            <!-- Cột trái - Ảnh chính và danh sách ảnh -->
-                                            <div class="col-md-5">
-                                                <div class="text-center mb-3 border rounded p-2 bg-light">
-                                                    <img id="eventMainImage" src="" class="img-fluid rounded" alt="Ảnh sự kiện">
-                                                </div>
-                                                <div class="row g-2" id="eventImageGallery">
-                                                    <div class="col-12 text-muted">Đang tải ảnh...</div>
-                                                </div>
-                                            </div>
-
-                                            <!-- Cột phải - Thông tin sự kiện -->
-                                            <div class="col-md-7">
-                                                <div class="row g-3">
-                                                    <!-- Hàng 1: Tên và mã sự kiện -->
-                                                    <div class="col-md-8">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Tên sự kiện</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventName" readonly>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-4">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Mã sự kiện</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventId" readonly>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Hàng 2: Loại sự kiện và địa điểm -->
-                                                    <div class="col-md-6">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Loại sự kiện</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventType" readonly>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Địa điểm</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventLocation" readonly>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Hàng 3: Thời gian -->
-                                                    <div class="col-md-6">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Ngày bắt đầu</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventStartDate" readonly>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Ngày kết thúc</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventEndDate" readonly>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Hàng 4: Mục tiêu -->
-                                                    <div class="col-md-6">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Mục tiêu thành viên</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventTargetMembers" readonly>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Mục tiêu quỹ</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventTargetFunds" readonly>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Hàng 5: Thống kê -->
-                                                    <div class="col-md-4">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Số đăng ký</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventRegistrationCount" readonly>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-4">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Số quyên góp</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventDonationCount" readonly>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-4">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Tổng tiền</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventTotalAmount" readonly>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Hàng 6: Mô tả sự kiện -->
-                                                    <div class="col-12">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Mô tả sự kiện</label>
-                                                            <textarea class="form-control-plaintext" id="eventDescription" readonly></textarea>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Hàng 7: Trạng thái -->
-                                                    <div class="col-md-6">
-                                                        <div class="form-group">
-                                                            <label class="form-label">Trạng thái</label>
-                                                            <input type="text" class="form-control-plaintext" id="eventStatus" readonly>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                            <i class="bi bi-x-circle me-1"></i> Đóng
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                     </tbody>
                 }    
             </table>

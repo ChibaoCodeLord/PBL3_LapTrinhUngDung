@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 
 namespace Volunteer_website.Helpers
 {
@@ -33,7 +33,9 @@ namespace Volunteer_website.Helpers
                     await imageFile.CopyToAsync(stream);
                 }
 
-                return Path.Combine("images", folderName, fileName).Replace("\\", "/");
+                string link = Path.Combine("images", folderName, fileName).Replace("\\", "/");
+               
+                    return link;
             }
             catch (Exception ex)
             {
@@ -78,6 +80,8 @@ namespace Volunteer_website.Helpers
                         }
 
                         string relativePath = Path.Combine("images", folderName, fileName).Replace("\\", "/");
+                        
+
                         uploadedPaths.Add(relativePath);
                     }
                 }

@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿﻿
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -38,48 +39,46 @@
     <link rel="stylesheet" href="~/css/Footer.css" />
     <link href="~/OrgLayout/assets/css/site.css" rel="stylesheet" />
     <link href="~/OrgLayout/assets/js/alert.js" rel="stylesheet" />
+     <link rel="stylesheet" href="~/OrgLayout/Modern-Aler.css" />
+
 </head>
 <body>
-    @*<header>
-
-
-        @if (TempData.ContainsKey("SuccessMessage"))
-        {
-            <div id="customAlertSuccess" class="modern-alert success">
-                <div class="alert-icon">
-                    <span>✔</span>
-                </div>
-                <div class="alert-content">
-                    <strong>Success</strong>
-                    <p>@TempData["SuccessMessage"]</p>
-                </div>
-                <div class="alert-close" onclick="this.parentElement.remove()">×</div>
+       @if (TempData.ContainsKey("SuccessMessage"))
+    {
+        <div id="customAlertSuccess" class="modern-alert success">
+            <div class="alert-icon">
+                <span>✔</span>
             </div>
-        }
-
-        @if (TempData.ContainsKey("Error"))
-        {
-            <div id="customAlertError" class="modern-alert error">
-                <div class="alert-icon">
-                    <span>⚠</span>
-                </div>
-                <div class="alert-content">
-                    <strong>Error</strong>
-                    <p>@TempData["Error"]</p>
-                </div>
-                <div class="alert-close" onclick="this.parentElement.remove()">×</div>
+            <div class="alert-content">
+                <strong>Success</strong>
+                <p>@TempData["SuccessMessage"]</p>
             </div>
-        }
-    </header>*@
+            <div class="alert-close" onclick="this.parentElement.remove()">×</div>
+        </div>
+    }
+
+    @if (TempData.ContainsKey("Error"))
+    {
+        <div id="customAlertError" class="modern-alert error">
+            <div class="alert-icon">
+                <span>⚠</span>
+            </div>
+            <div class="alert-content">
+                <strong>Error</strong>
+                <p>@TempData["Error"]</p>
+            </div>
+            <div class="alert-close" onclick="this.parentElement.remove()">×</div>
+        </div>
+    }
 
 
     @await Html.PartialAsync("Navbar")
-            @RenderBody()
+    @RenderBody()
     @await Html.PartialAsync("Footer")
 
 
 
-     
+
     <script src="~/js/Navbar_user.js"></script>
     <script src="~/js/Search.js"></script>
     <script src="~/js/jquery.min.js"></script>
@@ -96,7 +95,7 @@
     <script src="~/js/bootstrap-datepicker.js"></script>
     <script src="~/js/jquery.timepicker.min.js"></script>
     <script src="~/js/scrollax.min.js"></script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBVWaKrjvy3MaE7SQ74_uJiULgl1JY0H2s&sensor=false"></script>
+    
     <script src="~/js/google-map.js"></script>
     <script src="~/js/main.js"></script>
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
